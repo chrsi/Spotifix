@@ -1,4 +1,5 @@
 import { logError } from "../services/logger";
+import { createRedirectTarget, redirectIfDynamicEnvironment } from "./dynamicEnvSupport";
 import { getSecret, removeSecret, storeSecret } from "./secretStorage";
 
 const KEY_AUTHENTICATION_CODE = 'authentication_code';
@@ -29,13 +30,20 @@ export async function login() {
     const [ code_verifier, code_challenge ] = await createChallenge();
     storeSecret(KEY_CODE_CHALLENGE, code_verifier);
 
+    const state = JSON.stringify({
+        // To support dynamic environments the proper redirect target will be written to the state.
+        // Since the state can carry information between AS and client we can use it to maintain the target.
+        target: createRedirectTarget()
+    })
+
     const queryParams = new URLSearchParams({
         client_id: process.env.REACT_APP_SPOTIFY_CLIENT_ID ?? '',
         response_type: 'code',
         scope: 'playlist-modify-public',
         redirect_uri: `${process.env.REACT_APP_BASE_URL}/redirect`,
         code_challenge_method: 'S256',
-        code_challenge
+        code_challenge,
+        state
     })
 
     window.open('https://accounts.spotify.com/authorize?' + queryParams);
@@ -53,6 +61,17 @@ export async function logout() {
 
 export function init(url: string): boolean {
     const params = new URLSearchParams(url);
+
+    // When the request originates from an dynamic environment we have to redirect the token back to it.
+    // The information about where the request originates from is present in the state param.
+    const target = JSON.parse(params.get('state') ?? '').target;
+    if (target != null) {
+        const isDynamicEnv = redirectIfDynamicEnvironment(target, params);
+        if (isDynamicEnv) {
+            return false;
+        }
+    }
+    
     const authenticationCode = params.get('code');
     if (authenticationCode != null) {
         storeSecret(KEY_AUTHENTICATION_CODE, authenticationCode);
