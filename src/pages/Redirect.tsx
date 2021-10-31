@@ -3,8 +3,10 @@ import { init } from '../authentication/SpotifyAuthService';
 
 export function Redirect() {
     useEffect(() => {
-        init(window.location.search);
-        window.location.replace('/');
+        const successful = init(window.location.search);
+        if (successful) {
+            window.location.replace('/');
+        }
     })
 
     return (<div>redirecting ...</div>);
